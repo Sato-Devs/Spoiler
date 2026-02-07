@@ -34,7 +34,7 @@ public class FoodCombinationCrafting extends CustomRecipe {
                 }
             }
         }
-        return true;
+        return !foodItem.isEmpty();
     }
 
     @Override
@@ -47,13 +47,14 @@ public class FoodCombinationCrafting extends CustomRecipe {
 
             if (item.isEmpty()) continue;
 
+            foods++;
             float progress = NBTSpoilingUtils.getSpoilingProgress(item);
             if (highestProgress < progress) {
                 highestProgress = progress;
                 result = item;
-                foods++;
             }
         }
+        if (result.isEmpty()) return ItemStack.EMPTY;
         return result.copyWithCount(foods);
     }
 

@@ -36,6 +36,10 @@ public class FoodDataMixin {
             FoodSpoiling.LOGGER.debug("Eatable");
             Level level = entity.level();
             FoodStage curStage = SpoilingUtils.getCurStage(foodStack, level.registryAccess());
+            if (curStage == null) {
+                curStage = SpoilingUtils.getLastStage(foodStack, level.registryAccess());
+            }
+            if (curStage == null) return;
             Holder.Reference<FoodQuality> quality = level.registryAccess().lookupOrThrow(FSRegistries.FOOD_QUALITY_KEY).getOrThrow(curStage.quality());
             // Apply effects
             for (Pair<Either<MobEffectInstance, Potion>, Float> pair : quality.value().effects()) {

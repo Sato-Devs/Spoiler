@@ -21,7 +21,7 @@ public class ResultSlotMixin extends Slot {
     @Override
     public void set(ItemStack pStack) {
         super.set(pStack);
-        if (pStack.isEdible() && !pStack.isEdible() && NBTSpoilingUtils.hasFoodState(pStack)) {
+        if (pStack.isEdible() && NBTSpoilingUtils.hasFoodState(pStack)) {
             NBTSpoilingUtils.setCreationTime(pStack, player.level().dayTime());
         }
     }
