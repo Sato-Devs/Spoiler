@@ -19,6 +19,7 @@ public class FoodCombinationCrafting extends CustomRecipe {
     @Override
     public boolean matches(CraftingContainer pContainer, Level pLevel) {
         ItemStack foodItem = ItemStack.EMPTY;
+        int count = 0;
         for (int i = 0; i < pContainer.getContainerSize(); i++) {
             ItemStack item = pContainer.getItem(i);
 
@@ -27,14 +28,18 @@ public class FoodCombinationCrafting extends CustomRecipe {
             if (foodItem.isEmpty()) {
                 if (NBTSpoilingUtils.hasFoodState(item) && item.isEdible() && !item.is(FSTags.UNSPOILABLE_FOODS)) {
                     foodItem = item;
+                    count++;
+                } else {
+                    return false;
                 }
             } else {
                 if (!foodItem.is(item.getItem()) || !(NBTSpoilingUtils.hasFoodState(item) && item.isEdible() && !item.is(FSTags.UNSPOILABLE_FOODS))) {
                     return false;
                 }
+                count++;
             }
         }
-        return !foodItem.isEmpty();
+        return count >= 2;
     }
 
     @Override

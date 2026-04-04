@@ -36,6 +36,9 @@ import java.util.List;
 import java.util.Optional;
 
 public final class SpoilingUtils {
+    public static final String SALTED_KEY = "salted";
+    public static final float SALT_SPOILAGE_MULTIPLIER = 0.5f;
+
     public static void initialize(ItemStack stack, long dayTime, float spoilingModifier, HolderLookup.Provider lookup) {
         ResourceKey<FoodStages> stages = getFoodStagesResourceKey(stack, lookup);
 
@@ -45,7 +48,6 @@ public final class SpoilingUtils {
         NBTSpoilingUtils.setFoodStages(stack, stages);
         NBTSpoilingUtils.setMaxSpoilingProgress(stack, getMaxProgress(stack, lookup));
         NBTSpoilingUtils.setSpoilingModifier(stack, spoilingModifier);
-
     }
 
     private static @NotNull ResourceKey<FoodStages> getFoodStagesResourceKey(ItemStack stack, HolderLookup.Provider lookup) {
@@ -67,9 +69,13 @@ public final class SpoilingUtils {
     }
 
     public static int getMaxProgress(ItemStack stack, HolderLookup.Provider lookup) {
-        FoodStage lastStage = getLastStage(stack, lookup);
-        if (lastStage != null) {
-            return lastStage.days() * 24000;
+        FoodStages stages = getStages(stack, lookup);
+        if (stages != null) {
+            int totalDays = 0;
+            for (FoodStage stage : stages.stages()) {
+                totalDays += stage.days();
+            }
+            return totalDays * 24000;
         }
         return -1;
     }
@@ -78,16 +84,34 @@ public final class SpoilingUtils {
         FoodStages stages = getStages(stack, lookup);
         if (stages != null) {
             float spoilingProgress = NBTSpoilingUtils.getSpoilingProgress(stack);
-            float maxSpoilingProgress = NBTSpoilingUtils.getMaxSpoilingProgress(stack);
-            int totalDays = (int) (maxSpoilingProgress / 24000);
-            int curDay = (int) ((spoilingProgress / maxSpoilingProgress) * totalDays);
+            int progressDays = (int) (spoilingProgress / 24000);
+            int cumulativeDays = 0;
             for (FoodStage stage : stages.stages()) {
-                if (curDay < stage.days()) {
+                cumulativeDays += stage.days();
+                if (progressDays < cumulativeDays) {
                     return stage;
                 }
             }
+            return stages.stages().get(stages.stages().size() - 1);
         }
         return null;
+    }
+
+    public static int getCurStageIndex(ItemStack stack, HolderLookup.Provider lookup) {
+        FoodStages stages = getStages(stack, lookup);
+        if (stages != null) {
+            float spoilingProgress = NBTSpoilingUtils.getSpoilingProgress(stack);
+            int progressDays = (int) (spoilingProgress / 24000);
+            int cumulativeDays = 0;
+            for (int i = 0; i < stages.stages().size(); i++) {
+                cumulativeDays += stages.stages().get(i).days();
+                if (progressDays < cumulativeDays) {
+                    return i;
+                }
+            }
+            return stages.stages().size() - 1;
+        }
+        return -1;
     }
 
     public static float getTemperature(Level level, BlockPos pos) {
@@ -95,7 +119,7 @@ public final class SpoilingUtils {
             return (float) ColdSweatCompat.getTempFahrenheit(ColdSweatCompat.getTemperature(level, pos));
         }
         if (hasLSO()) {
-            return (float) LSOCompat.getTemperature(level, pos);
+            return LSOCompat.getTemperature(level, pos);
         }
         return 1f;
     }
@@ -123,6 +147,11 @@ public final class SpoilingUtils {
         return null;
     }
 
+    public static boolean shouldBecomeRottenItem(ItemStack stack, HolderLookup.Provider lookup) {
+        FoodStages stages = getStages(stack, lookup);
+        return stages != null && stages.becomeRottenItem();
+    }
+
     public static ItemStack createRottenMass(ItemStack foodStack) {
         ItemStack stack = new ItemStack(FSItems.ROTTEN_MASS.get(), foodStack.getCount());
         NBTSpoilingUtils.setFoodState(stack, NBTSpoilingUtils.getFoodState(foodStack));
@@ -133,71 +162,64 @@ public final class SpoilingUtils {
         return new ItemStack(FSItems.DECOMPOSED_GOO.get(), rottenMassStack.getCount());
     }
 
+    public static boolean isSalted(ItemStack stack) {
+        return stack.hasTag() && stack.getTag().getBoolean(SALTED_KEY);
+    }
+
+    public static void setSalted(ItemStack stack, boolean salted) {
+        stack.getOrCreateTag().putBoolean(SALTED_KEY, salted);
+    }
+
     public static List<Component> getSpoilingTooltip(ItemStack stack, Player player, boolean isShiftDown) {
         Level level = player.level();
-        long creationTime = NBTSpoilingUtils.getCreationTime(stack);
-        int creationDay = Math.round((creationTime - creationTime % 24000) / 24000f);
-        //long diff = level.dayTime() - creationTime;
-        long dayTime = level.dayTime();
-        int curDay = (int) (dayTime / 24000 - creationDay);
         RegistryAccess access = level.registryAccess();
         ResourceKey<FoodStages> foodStagesType = NBTSpoilingUtils.getFoodStages(stack);
-        if (foodStagesType != null) {
-            HolderLookup.RegistryLookup<FoodStages> registryLookup = access.lookupOrThrow(FSRegistries.FOOD_STAGES_KEY);
-            Holder.Reference<FoodStages> foodStagesReference = registryLookup.get(foodStagesType).orElse(null);
-            if (foodStagesReference == null) {
-                foodStagesReference = registryLookup.getOrThrow(getFoodStagesResourceKey(stack, access));
-            }
-            List<FoodStage> stages = foodStagesReference.value().stages();
-            if (!stages.isEmpty()) {
-                ResourceKey<FoodQuality> qualityKey = null;
-                FoodStage curStage = null;
-                FoodStage lastStage = null;
-                FoodStage nextStage = null;
-                boolean foundDays = false;
-                int daysToNext = 0;
-                for (int i = 0; i < stages.size(); i++) {
-                    FoodStage stage = stages.get(i);
+        if (foodStagesType == null) return Collections.emptyList();
 
-                    if (curDay < stage.days() && !foundDays) {
-                        curStage = stage;
-                        qualityKey = stage.quality();
-                        if (i + 1 < stages.size()) {
-                            nextStage = stages.get(i + 1);
-                            daysToNext = stage.days();
-                        }
-                        foundDays = true;
-                    }
-
-                    if (i == stages.size() - 1) {
-                        lastStage = stage;
-                    }
-                }
-                int totalDays = lastStage.days();
-                long expirationDate = (creationTime + (totalDays * 24000L));
-                int expirationDay = (int) (expirationDate / 24000);
-                String expirationDateText = String.format("Day %d - %s", expirationDay, timeToHoursMinutes(level, expirationDate));
-                ResourceKey<FoodQuality> key = qualityKey != null ? qualityKey : stages.get(stages.size() - 1).quality();
-                Holder.Reference<FoodQuality> quality = access.lookupOrThrow(FSRegistries.FOOD_QUALITY_KEY).getOrThrow(key);
-                float freshness = getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack));
-                List<Component> tooltip = new ArrayList<>();
-                if (NBTSpoilingUtils.getSpoilingModifier(stack) == 0) {
-                    tooltip.add(Component.literal("Frozen").withStyle(Style.EMPTY.withColor(FoodSpoilingConfig.frozenTintColor)));
-                }
-                tooltip.addAll(List.of(
-                        Component.literal("Quality: ").withStyle(ChatFormatting.GRAY).append(registryTranslation(key).copy().withStyle(Style.EMPTY.withColor(quality.value().textColor().toARGB()))),
-                        Component.literal("Freshness: ").withStyle(ChatFormatting.GRAY).append(Math.round(freshness * 100) + "%"),
-                        Component.literal("Expires on: ").withStyle(ChatFormatting.GRAY).append(Component.literal(expirationDateText).withStyle(ChatFormatting.YELLOW))
-                ));
-                if (!isShiftDown) {
-                    tooltip.add(Component.literal("Hold <Shift> for more information").withStyle(ChatFormatting.GRAY));
-                } else if (curStage != null) {
-                    tooltip.addAll(createAdvancedTooltip(stack, player, curStage, nextStage, creationTime, daysToNext, access));
-                }
-                return tooltip;
-            }
+        HolderLookup.RegistryLookup<FoodStages> registryLookup = access.lookupOrThrow(FSRegistries.FOOD_STAGES_KEY);
+        Holder.Reference<FoodStages> foodStagesReference = registryLookup.get(foodStagesType).orElse(null);
+        if (foodStagesReference == null) {
+            foodStagesReference = registryLookup.getOrThrow(getFoodStagesResourceKey(stack, access));
         }
-        return Collections.emptyList();
+        List<FoodStage> stages = foodStagesReference.value().stages();
+        if (stages.isEmpty()) return Collections.emptyList();
+
+        float spoilingProgress = NBTSpoilingUtils.getSpoilingProgress(stack);
+        float maxSpoilingProgress = NBTSpoilingUtils.getMaxSpoilingProgress(stack);
+
+        FoodStage curStage = getCurStage(stack, access);
+        int curIndex = getCurStageIndex(stack, access);
+        FoodStage nextStage = (curIndex >= 0 && curIndex + 1 < stages.size()) ? stages.get(curIndex + 1) : null;
+
+        ResourceKey<FoodQuality> key = curStage != null ? curStage.quality() : stages.get(stages.size() - 1).quality();
+        Holder.Reference<FoodQuality> quality = access.lookupOrThrow(FSRegistries.FOOD_QUALITY_KEY).getOrThrow(key);
+        float freshness = getFreshness(spoilingProgress, maxSpoilingProgress);
+
+        int totalDays = 0;
+        for (FoodStage s : stages) totalDays += s.days();
+        long creationTime = NBTSpoilingUtils.getCreationTime(stack);
+        long expirationDate = creationTime + ((long) totalDays * 24000L);
+        int expirationDay = (int) (expirationDate / 24000);
+        String expirationDateText = String.format("Day %d - %s", expirationDay, timeToHoursMinutes(level, expirationDate));
+
+        List<Component> tooltip = new ArrayList<>();
+        if (NBTSpoilingUtils.getSpoilingModifier(stack) == 0) {
+            tooltip.add(Component.literal("Frozen").withStyle(Style.EMPTY.withColor(FoodSpoilingConfig.frozenTintColor)));
+        }
+        if (isSalted(stack)) {
+            tooltip.add(Component.literal("Salted").withStyle(ChatFormatting.GOLD));
+        }
+        tooltip.addAll(List.of(
+                Component.literal("Quality: ").withStyle(ChatFormatting.GRAY).append(registryTranslation(key).copy().withStyle(Style.EMPTY.withColor(quality.value().textColor().toARGB()))),
+                Component.literal("Freshness: ").withStyle(ChatFormatting.GRAY).append(Math.round(freshness * 100) + "%"),
+                Component.literal("Expires on: ").withStyle(ChatFormatting.GRAY).append(Component.literal(expirationDateText).withStyle(ChatFormatting.YELLOW))
+        ));
+        if (!isShiftDown) {
+            tooltip.add(Component.literal("Hold <Shift> for more information").withStyle(ChatFormatting.GRAY));
+        } else if (curStage != null) {
+            tooltip.addAll(createAdvancedTooltip(stack, player, curStage, nextStage, curIndex, stages, access));
+        }
+        return tooltip;
     }
 
     public static FoodStage getLastStage(ItemStack stack, HolderLookup.Provider lookup) {
@@ -206,31 +228,44 @@ public final class SpoilingUtils {
     }
 
     public static float getFreshness(float progress, float maxProgress) {
-        return 1f - (progress / maxProgress);
+        if (maxProgress <= 0) return 1f;
+        return Math.max(0f, 1f - (progress / maxProgress));
     }
 
-    private static List<Component> createAdvancedTooltip(ItemStack stack, Player player, FoodStage curStage, FoodStage nextStage, long creationTime, int daysToNext, RegistryAccess access) {
+    private static List<Component> createAdvancedTooltip(ItemStack stack, Player player, FoodStage curStage, FoodStage nextStage, int curIndex, List<FoodStage> stages, RegistryAccess access) {
         Holder.Reference<FoodQuality> quality = access.lookupOrThrow(FSRegistries.FOOD_QUALITY_KEY).getOrThrow(curStage.quality());
         List<Component> advTooltip = new ArrayList<>();
-        long curTime = (long) (creationTime + NBTSpoilingUtils.getSpoilingProgress(stack));
-        int timeToNext = ((curStage.days() - daysToNext) * 24000) - (int) (curTime - (creationTime + (daysToNext * 24000)));
-        int days = timeToNext / 24000;
+
+        float spoilingProgress = NBTSpoilingUtils.getSpoilingProgress(stack);
+        int cumulativeDaysBefore = 0;
+        for (int i = 0; i < curIndex; i++) {
+            cumulativeDaysBefore += stages.get(i).days();
+        }
+        int cumulativeDaysCurrent = cumulativeDaysBefore + curStage.days();
+        int progressDays = (int) (spoilingProgress / 24000);
+        int daysRemaining = cumulativeDaysCurrent - progressDays;
+
         MutableComponent nextStageComponent = Component.empty();
         if (nextStage != null) {
             Holder.Reference<FoodQuality> nextQuality = access.lookupOrThrow(FSRegistries.FOOD_QUALITY_KEY).getOrThrow(nextStage.quality());
             nextStageComponent.append(Component.literal("Next Stage ")
-                    .append(Component.literal("%s".formatted(registryTranslation(nextQuality.key()).getString())).withStyle(Style.EMPTY.withColor(nextQuality.value().textColor().toARGB()))));
+                    .append(Component.literal(registryTranslation(nextQuality.key()).getString()).withStyle(Style.EMPTY.withColor(nextQuality.value().textColor().toARGB()))));
         } else {
             nextStageComponent.append(Component.literal("Decayed").withStyle(ChatFormatting.DARK_RED));
         }
-        nextStageComponent.append(Component.literal(days > 0 ? " in " + days + " Days" : " in < 1 Day")).withStyle(ChatFormatting.GRAY);
+        nextStageComponent.append(Component.literal(daysRemaining > 0 ? " in " + daysRemaining + " Days" : " in < 1 Day")).withStyle(ChatFormatting.GRAY);
         advTooltip.add(nextStageComponent);
+
         FoodProperties foodProperties = stack.getFoodProperties(player);
         if (foodProperties != null) {
-            advTooltip.add(Component.literal("Saturation Modifier: " + foodProperties.getNutrition() * quality.value().nutritionMod()).withStyle(ChatFormatting.GRAY));
-            advTooltip.add(Component.literal("Nutrition Modifier: " + foodProperties.getSaturationModifier() * quality.value().saturationMod()).withStyle(ChatFormatting.GRAY));
-            advTooltip.add(Component.literal("Effects:").withStyle(ChatFormatting.GRAY));
-            advTooltip.addAll(formatEffects(quality.get().effects()));
+            advTooltip.add(Component.literal("Saturation: ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(String.format("%.0f%%", quality.value().saturationMod() * 100)).withStyle(ChatFormatting.WHITE)));
+            advTooltip.add(Component.literal("Nutrition: ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(String.format("%.0f%%", quality.value().nutritionMod() * 100)).withStyle(ChatFormatting.WHITE)));
+            if (!quality.get().effects().isEmpty()) {
+                advTooltip.add(Component.literal("Effects:").withStyle(ChatFormatting.GRAY));
+                advTooltip.addAll(formatEffects(quality.get().effects()));
+            }
         }
         return advTooltip;
     }
@@ -239,11 +274,20 @@ public final class SpoilingUtils {
         List<Component> tooltip = new ArrayList<>();
         for (Pair<Either<MobEffectInstance, Potion>, Float> effect : effects) {
             Either<MobEffectInstance, Potion> effectFirst = effect.getFirst();
+            int chance = Math.round(effect.getSecond() * 100);
             if (effectFirst.left().isPresent()) {
-                tooltip.add(Component.translatable(effectFirst.left().get().getDescriptionId()).withStyle(ChatFormatting.GRAY));
+                MobEffectInstance inst = effectFirst.left().get();
+                String duration = String.format("(%ds)", inst.getDuration() / 20);
+                tooltip.add(Component.literal(" ")
+                        .append(Component.translatable(inst.getDescriptionId()))
+                        .append(Component.literal(" " + duration + " " + chance + "%"))
+                        .withStyle(ChatFormatting.DARK_GRAY));
             } else if (effectFirst.right().isPresent()) {
-                ResourceLocation key = BuiltInRegistries.POTION.getKey(effectFirst.right().get());
-                tooltip.add(Component.translatable("item." + key.getNamespace() + ".potion.effect." + key.getPath()));
+                ResourceLocation potionKey = BuiltInRegistries.POTION.getKey(effectFirst.right().get());
+                tooltip.add(Component.literal(" ")
+                        .append(Component.translatable("item." + potionKey.getNamespace() + ".potion.effect." + potionKey.getPath()))
+                        .append(Component.literal(" " + chance + "%"))
+                        .withStyle(ChatFormatting.DARK_GRAY));
             }
         }
         return tooltip;
@@ -279,5 +323,4 @@ public final class SpoilingUtils {
 
         return 1.0f;
     }
-
 }

@@ -15,11 +15,19 @@ public class FSEnUSLangProvider extends LanguageProvider {
 
     @Override
     protected void addTranslations() {
-        add(FSFoodQualities.AGED, "Aged");
         add(FSFoodQualities.FRESH, "Fresh");
-        add(FSFoodQualities.MOLDY, "Moldy");
-        add(FSFoodQualities.SPOILED, "Spoiled");
         add(FSFoodQualities.STALE, "Stale");
+        add(FSFoodQualities.BRUISED, "Bruised");
+        add(FSFoodQualities.AGED, "Aged");
+        add(FSFoodQualities.FLAT, "Flat");
+        add(FSFoodQualities.MUSHY, "Mushy");
+        add(FSFoodQualities.SPOILED, "Spoiled");
+        add(FSFoodQualities.SOUR, "Sour");
+        add(FSFoodQualities.WEAK, "Weak");
+        add(FSFoodQualities.MOLDY, "Moldy");
+        add(FSFoodQualities.RANCID, "Rancid");
+        add(FSFoodQualities.DEAD, "Dead");
+        add(FSFoodQualities.ROTTEN, "Rotten");
 
         addItem(FSItems.ROTTEN_MASS, "Rotten Mass");
         addItem(FSItems.DECOMPOSED_GOO, "Decomposed Goo");

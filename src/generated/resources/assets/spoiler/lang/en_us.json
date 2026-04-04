@@ -1,9 +1,17 @@
 {
   "food_quality.spoiler.aged": "Aged",
+  "food_quality.spoiler.bruised": "Bruised",
+  "food_quality.spoiler.dead": "Dead",
+  "food_quality.spoiler.flat": "Flat",
   "food_quality.spoiler.fresh": "Fresh",
   "food_quality.spoiler.moldy": "Moldy",
+  "food_quality.spoiler.mushy": "Mushy",
+  "food_quality.spoiler.rancid": "Rancid",
+  "food_quality.spoiler.rotten": "Rotten",
+  "food_quality.spoiler.sour": "Sour",
   "food_quality.spoiler.spoiled": "Spoiled",
   "food_quality.spoiler.stale": "Stale",
+  "food_quality.spoiler.weak": "Weak",
   "item.spoiler.decomposed_goo": "Decomposed Goo",
   "item.spoiler.rotten_mass": "Rotten Mass"
 }

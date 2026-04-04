@@ -18,8 +18,12 @@ public class SpoilingRecipeUtils {
         }
 
         SpoilingUtils.initialize(resultItem, 0, 1f, pRegistryAccess);
-        NBTSpoilingUtils.setSpoilingProgress(resultItem, progress / foodItems);
+        if (foodItems > 0) {
+            NBTSpoilingUtils.setSpoilingProgress(resultItem, progress / foodItems);
+        }
         float maxProgress = SpoilingUtils.getMaxProgress(resultItem, pRegistryAccess);
-        NBTSpoilingUtils.setMaxSpoilingProgress(resultItem, maxProgress);
+        if (maxProgress > 0) {
+            NBTSpoilingUtils.setMaxSpoilingProgress(resultItem, maxProgress);
+        }
     }
 }

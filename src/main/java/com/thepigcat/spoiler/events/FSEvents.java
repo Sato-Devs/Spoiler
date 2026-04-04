@@ -9,7 +9,6 @@ import com.thepigcat.spoiler.registries.FSItems;
 import com.thepigcat.spoiler.utils.ClientUtils;
 import com.thepigcat.spoiler.utils.NBTSpoilingUtils;
 import com.thepigcat.spoiler.utils.SpoilingUtils;
-import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistryAccess;
@@ -25,7 +24,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.event.TickEvent;
@@ -42,12 +40,12 @@ import net.minecraftforge.items.wrapper.InvWrapper;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Mod.EventBusSubscriber(modid = FoodSpoiling.MODID)
 public final class FSEvents {
-    // BlockEntities that we need to tick because they are loaded
-    private static final Set<BlockPos> TICKING_BLOCK_ENTITIES = new ObjectArraySet<>();
-    private static final Set<UUID> TICKING_ENTITIES = new ObjectArraySet<>();
+    private static final Set<BlockPos> TICKING_BLOCK_ENTITIES = ConcurrentHashMap.newKeySet();
+    private static final Set<UUID> TICKING_ENTITIES = ConcurrentHashMap.newKeySet();
 
     @SubscribeEvent
     public static void onItemPickup(PlayerEvent.ItemPickupEvent event) {
@@ -59,7 +57,6 @@ public final class FSEvents {
         ItemStack crafting = event.getCrafting();
         initFoodItem(event.getEntity(), crafting);
         NBTSpoilingUtils.setCreationTime(crafting, event.getEntity().level().dayTime());
-
     }
 
     @SubscribeEvent
@@ -85,7 +82,6 @@ public final class FSEvents {
         if (!NBTSpoilingUtils.hasFoodState(stack) && !stack.is(FSTags.UNSPOILABLE_FOODS) && stack.isEdible()) {
             Level level = player.level();
             SpoilingUtils.initialize(stack, level.dayTime(), 1f, level.registryAccess());
-
         }
     }
 
@@ -105,6 +101,7 @@ public final class FSEvents {
     private static void processFoodSpoilage(Level level) {
         long dayTime = level.dayTime();
         RegistryAccess lookup = level.registryAccess();
+
         for (BlockPos pos : TICKING_BLOCK_ENTITIES) {
             if (level.isLoaded(pos)) {
                 BlockEntity blockEntity = level.getBlockEntity(pos);
@@ -148,7 +145,6 @@ public final class FSEvents {
                 spoilItemsInHandler(new InvWrapper(player.getEnderChestInventory()), 1, dayTime, lookup);
             }
         }
-
     }
 
     private static @Nullable ResourceLocation getBlockEntityId(BlockEntity blockEntity) {
@@ -156,77 +152,65 @@ public final class FSEvents {
     }
 
     public static void spoilItemFrame(ItemFrame entity) {
-        // Process items using capability
         ItemStack stack = entity.getItem();
         HolderLookup.Provider lookup = entity.level().registryAccess();
         long dayTime = entity.level().dayTime();
         if (!stack.isEmpty()) {
             if (stack.isEdible() && !stack.is(FSTags.UNSPOILABLE_FOODS)) {
                 if (NBTSpoilingUtils.hasFoodState(stack)) {
-                    increaseProgress(getTemperatureMod(entity.level(), entity.getOnPos()), entity.level().dayTime(), stack);
+                    float saltMod = SpoilingUtils.isSalted(stack) ? SpoilingUtils.SALT_SPOILAGE_MULTIPLIER : 1f;
+                    increaseProgress(getTemperatureMod(entity.level(), entity.getOnPos()) * saltMod, dayTime, stack);
 
-                    FoodStages stages = SpoilingUtils.getStages(stack, lookup);
-                    FoodStage stage = SpoilingUtils.getCurStage(stack, lookup);
-
-                    if (stage != null && stages != null) {
-                        FoodStage lastStage = stages.stages().get(stages.stages().size() - 1);
-                        if (stage.days() == lastStage.days()) {
+                    if (isFullyExpired(stack, lookup)) {
+                        if (FoodSpoilingConfig.becomeRottenMass && SpoilingUtils.shouldBecomeRottenItem(stack, lookup)) {
                             entity.setItem(SpoilingUtils.createRottenMass(stack));
                         }
                     }
-
                 } else {
-                    ItemStack extracted = stack.copy();
-                    SpoilingUtils.initialize(extracted, dayTime, 1f, lookup);
-                    entity.setItem(extracted);
+                    ItemStack copy = stack.copy();
+                    SpoilingUtils.initialize(copy, dayTime, 1f, lookup);
+                    entity.setItem(copy);
                 }
-            } else if (stack.is(FSItems.ROTTEN_MASS.get())) {
-                FoodStages stages = SpoilingUtils.getStages(stack, lookup);
-                if (stages != null) {
-                    if (SpoilingUtils.getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack)) <= 0) {
-                        ItemStack extracted = stack.copy();
-                        entity.setItem(SpoilingUtils.createDecomposedGoo(extracted));
-                    }
+            } else if (stack.is(FSItems.ROTTEN_MASS.get()) && FoodSpoilingConfig.becomeDecomposedGoo) {
+                if (SpoilingUtils.getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack)) <= 0) {
+                    entity.setItem(SpoilingUtils.createDecomposedGoo(stack));
                 }
             }
         }
     }
 
     public static void spoilItemEntity(ItemEntity entity) {
-        // Process items using capability
         ItemStack stack = entity.getItem();
         HolderLookup.Provider lookup = entity.level().registryAccess();
         long dayTime = entity.level().dayTime();
         if (!stack.isEmpty()) {
             if (stack.isEdible() && !stack.is(FSTags.UNSPOILABLE_FOODS)) {
                 if (NBTSpoilingUtils.hasFoodState(stack)) {
-                    increaseProgress(getTemperatureMod(entity.level(), entity.getOnPos()), entity.level().dayTime(), stack);
+                    float saltMod = SpoilingUtils.isSalted(stack) ? SpoilingUtils.SALT_SPOILAGE_MULTIPLIER : 1f;
+                    increaseProgress(getTemperatureMod(entity.level(), entity.getOnPos()) * saltMod, dayTime, stack);
 
-                    FoodStages stages = SpoilingUtils.getStages(stack, lookup);
-                    FoodStage stage = SpoilingUtils.getCurStage(stack, lookup);
-
-                    if (stage != null && stages != null) {
-                        FoodStage lastStage = stages.stages().get(stages.stages().size() - 1);
-                        if (stage.days() == lastStage.days()) {
+                    if (isFullyExpired(stack, lookup)) {
+                        if (FoodSpoilingConfig.becomeRottenMass && SpoilingUtils.shouldBecomeRottenItem(stack, lookup)) {
                             entity.setItem(SpoilingUtils.createRottenMass(stack));
                         }
                     }
-
                 } else {
-                    ItemStack extracted = stack.copy();
-                    SpoilingUtils.initialize(extracted, dayTime, 1f, lookup);
-                    entity.setItem(extracted);
+                    ItemStack copy = stack.copy();
+                    SpoilingUtils.initialize(copy, dayTime, 1f, lookup);
+                    entity.setItem(copy);
                 }
-            } else if (stack.is(FSItems.ROTTEN_MASS.get())) {
-                FoodStages stages = SpoilingUtils.getStages(stack, lookup);
-                if (stages != null) {
-                    if (SpoilingUtils.getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack)) <= 0) {
-                        ItemStack extracted = stack.copy();
-                        entity.setItem(SpoilingUtils.createDecomposedGoo(extracted));
-                    }
+            } else if (stack.is(FSItems.ROTTEN_MASS.get()) && FoodSpoilingConfig.becomeDecomposedGoo) {
+                if (SpoilingUtils.getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack)) <= 0) {
+                    entity.setItem(SpoilingUtils.createDecomposedGoo(stack));
                 }
             }
         }
+    }
+
+    private static boolean isFullyExpired(ItemStack stack, HolderLookup.Provider lookup) {
+        float progress = NBTSpoilingUtils.getSpoilingProgress(stack);
+        float maxProgress = NBTSpoilingUtils.getMaxSpoilingProgress(stack);
+        return maxProgress > 0 && progress >= maxProgress;
     }
 
     private static void spoilItemsInHandler(IItemHandler itemHandler, float spoilingModifier, long dayTime, HolderLookup.Provider lookup) {
@@ -238,40 +222,33 @@ public final class FSEvents {
                     spoilItemsInHandler(itemItemHandler.orElseThrow(NullPointerException::new), 1f, dayTime, lookup);
                 }
 
+                float saltMod = SpoilingUtils.isSalted(stack) ? SpoilingUtils.SALT_SPOILAGE_MULTIPLIER : 1f;
+                float effectiveModifier = spoilingModifier * saltMod;
+
                 if (stack.isEdible() && !stack.is(FSTags.UNSPOILABLE_FOODS)) {
                     trySetSpoilingModifier(stack, spoilingModifier);
 
                     if (NBTSpoilingUtils.hasFoodState(stack)) {
-                        increaseProgress(spoilingModifier, dayTime, stack);
+                        increaseProgress(effectiveModifier, dayTime, stack);
 
-                        FoodStages stages = SpoilingUtils.getStages(stack, lookup);
-                        FoodStage stage = SpoilingUtils.getCurStage(stack, lookup);
-
-                        if (stage != null && stages != null) {
-                            FoodStage lastStage = stages.stages().get(stages.stages().size() - 1);
-                            if (stage.days() == lastStage.days()) {
+                        if (isFullyExpired(stack, lookup)) {
+                            if (FoodSpoilingConfig.becomeRottenMass && SpoilingUtils.shouldBecomeRottenItem(stack, lookup)) {
                                 ItemStack extracted = itemHandler.extractItem(i, stack.getCount(), false);
                                 itemHandler.insertItem(i, SpoilingUtils.createRottenMass(extracted), false);
                             }
                         }
-
                     } else {
                         ItemStack extracted = itemHandler.extractItem(i, stack.getCount(), false);
                         SpoilingUtils.initialize(extracted, dayTime, spoilingModifier, lookup);
-
                         itemHandler.insertItem(i, extracted, false);
                     }
-                } else if (stack.is(FSItems.ROTTEN_MASS.get())) {
+                } else if (stack.is(FSItems.ROTTEN_MASS.get()) && FoodSpoilingConfig.becomeDecomposedGoo) {
                     trySetSpoilingModifier(stack, spoilingModifier);
+                    increaseProgress(effectiveModifier, dayTime, stack);
 
-                    increaseProgress(spoilingModifier, dayTime, stack);
-
-                    FoodStages stages = SpoilingUtils.getStages(stack, lookup);
-                    if (stages != null) {
-                        if (SpoilingUtils.getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack)) <= 0) {
-                            ItemStack extracted = itemHandler.extractItem(i, stack.getCount(), false);
-                            itemHandler.insertItem(i, SpoilingUtils.createDecomposedGoo(extracted), false);
-                        }
+                    if (SpoilingUtils.getFreshness(NBTSpoilingUtils.getSpoilingProgress(stack), NBTSpoilingUtils.getMaxSpoilingProgress(stack)) <= 0) {
+                        ItemStack extracted = itemHandler.extractItem(i, stack.getCount(), false);
+                        itemHandler.insertItem(i, SpoilingUtils.createDecomposedGoo(extracted), false);
                     }
                 }
             }
@@ -296,7 +273,6 @@ public final class FSEvents {
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (!FoodSpoilingConfig.spoilFoods) return;
-
         if (event.getLevel().isClientSide()) return;
 
         ChunkAccess chunk = event.getChunk();
@@ -304,9 +280,7 @@ public final class FSEvents {
 
         for (BlockPos pos : blockEntityPositions) {
             BlockEntity blockEntity = chunk.getBlockEntity(pos);
-
             if (blockEntity != null) {
-
                 TICKING_BLOCK_ENTITIES.add(pos);
             }
         }
@@ -335,11 +309,10 @@ public final class FSEvents {
                 event.getToolTip().addAll(SpoilingUtils.getSpoilingTooltip(stack, entity, ClientUtils.hasShiftDown()));
             }
         }
-
     }
 
     private static float getTemperatureMod(Level level, BlockPos pos) {
-        if (SpoilingUtils.hasColdSweat()) {
+        if (SpoilingUtils.hasColdSweat() || SpoilingUtils.hasLSO()) {
             float temperature = SpoilingUtils.getTemperature(level, pos);
             return temperature / FoodSpoilingConfig.neutralTemperature;
         }
@@ -348,7 +321,6 @@ public final class FSEvents {
 
     public static void registerBlockEntity(BlockPos pos) {
         if (!FoodSpoilingConfig.spoilFoods) return;
-
         if (pos != null) {
             TICKING_BLOCK_ENTITIES.add(pos);
         }
@@ -356,7 +328,6 @@ public final class FSEvents {
 
     public static void unregisterBlockEntity(BlockPos pos) {
         if (!FoodSpoilingConfig.spoilFoods) return;
-
         if (pos != null) {
             TICKING_BLOCK_ENTITIES.remove(pos);
         }
@@ -364,10 +335,8 @@ public final class FSEvents {
 
     public static void unregisterEntity(UUID uuid) {
         if (!FoodSpoilingConfig.spoilFoods) return;
-
         if (uuid != null) {
             TICKING_ENTITIES.remove(uuid);
         }
     }
-
 }

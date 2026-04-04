@@ -7,16 +7,17 @@ import com.thepigcat.spoiler.registries.FSItems;
 import com.thepigcat.spoiler.registries.FSRecipes;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.*;
+import net.minecraft.world.level.block.ComposterBlock;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DataPackRegistryEvent;
 import org.slf4j.Logger;
 
-// The value here should match an entry in the META-INF/mods.toml file
 @Mod(FoodSpoiling.MODID)
 public final class FoodSpoiling {
     public static final String MODID = "spoiler";
@@ -26,6 +27,7 @@ public final class FoodSpoiling {
         IEventBus modEventbus = FMLJavaModLoadingContext.get().getModEventBus();
         modEventbus.addListener(this::registerDatapackRegistry);
         modEventbus.addListener(this::addItemsToCreativeTab);
+        modEventbus.addListener(this::onCommonSetup);
 
         FSItems.ITEMS.register(modEventbus);
         FSRecipes.RECIPES.register(modEventbus);
@@ -38,6 +40,13 @@ public final class FoodSpoiling {
         event.dataPackRegistry(FSRegistries.FOOD_STAGES_KEY, FoodStages.CODEC, FoodStages.CODEC);
     }
 
+    private void onCommonSetup(FMLCommonSetupEvent event) {
+        event.enqueueWork(() -> {
+            ComposterBlock.COMPOSTABLES.put(FSItems.ROTTEN_MASS.get(), 0.65f);
+            ComposterBlock.COMPOSTABLES.put(FSItems.DECOMPOSED_GOO.get(), 0.85f);
+        });
+    }
+
     private void addItemsToCreativeTab(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
             event.accept(FSItems.DECOMPOSED_GOO);
@@ -48,5 +57,4 @@ public final class FoodSpoiling {
     public static ResourceLocation rl(String path) {
         return new ResourceLocation(MODID, path);
     }
-
 }

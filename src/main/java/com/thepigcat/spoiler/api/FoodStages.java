@@ -9,10 +9,14 @@ import net.minecraft.world.item.Item;
 import java.util.List;
 import java.util.Optional;
 
-// Optional key may only be empty if this is the default food stages
-public record FoodStages(Optional<TagKey<Item>> key, List<FoodStage> stages) {
+public record FoodStages(Optional<TagKey<Item>> key, List<FoodStage> stages, boolean becomeRottenItem) {
+    public FoodStages(Optional<TagKey<Item>> key, List<FoodStage> stages) {
+        this(key, stages, true);
+    }
+
     public static final Codec<FoodStages> CODEC = RecordCodecBuilder.create(inst -> inst.group(
             TagKey.codec(Registries.ITEM).optionalFieldOf("items").forGetter(FoodStages::key),
-            FoodStage.CODEC.listOf().fieldOf("stages").forGetter(FoodStages::stages)
+            FoodStage.CODEC.listOf().fieldOf("stages").forGetter(FoodStages::stages),
+            Codec.BOOL.optionalFieldOf("become_rotten_item", true).forGetter(FoodStages::becomeRottenItem)
     ).apply(inst, FoodStages::new));
 }

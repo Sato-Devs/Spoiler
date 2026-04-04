@@ -37,7 +37,7 @@ public record FoodQuality(RGBAColor textColor, RGBAColor tintColor, float satura
         private RGBAColor textColor;
         private RGBAColor tintColor;
         private float saturation;
-        private int nutrition;
+        private float nutrition;
         private RecipeType usableInRecipes = RecipeType.ALL;
         private final List<Pair<Either<MobEffectInstance, Potion>, Float>> effects = new ArrayList<>();
 
@@ -59,7 +59,7 @@ public record FoodQuality(RGBAColor textColor, RGBAColor tintColor, float satura
             return this;
         }
 
-        public Builder nutrition(int nutrition) {
+        public Builder nutrition(float nutrition) {
             this.nutrition = nutrition;
             return this;
         }
