@@ -5,6 +5,7 @@ import com.thepigcat.spoiler.FoodSpoilingConfig;
 import com.thepigcat.spoiler.FSTags;
 import com.thepigcat.spoiler.api.FoodStage;
 import com.thepigcat.spoiler.api.FoodStages;
+import com.thepigcat.spoiler.commands.SpoilerCommand;
 import com.thepigcat.spoiler.registries.FSItems;
 import com.thepigcat.spoiler.utils.ClientUtils;
 import com.thepigcat.spoiler.utils.NBTSpoilingUtils;
@@ -26,6 +27,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.ItemFishedEvent;
@@ -46,6 +48,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class FSEvents {
     private static final Set<BlockPos> TICKING_BLOCK_ENTITIES = ConcurrentHashMap.newKeySet();
     private static final Set<UUID> TICKING_ENTITIES = ConcurrentHashMap.newKeySet();
+
+    @SubscribeEvent
+    public static void onRegisterCommands(RegisterCommandsEvent event) {
+        SpoilerCommand.register(event.getDispatcher());
+    }
 
     @SubscribeEvent
     public static void onItemPickup(PlayerEvent.ItemPickupEvent event) {
