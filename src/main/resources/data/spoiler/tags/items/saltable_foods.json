@@ -1,0 +1,14 @@
+{
+  "replace": false,
+  "values": [
+    "#spoiler:raw_meats",
+    "#spoiler:cooked_meats",
+    "#spoiler:cooked_meals",
+    "#spoiler:baked_goods",
+    "#spoiler:cooked_eggs",
+    "#spoiler:hard_produce",
+    "#spoiler:soft_produce",
+    "#spoiler:dry_produce",
+    "#spoiler:produce"
+  ]
+}

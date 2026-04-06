@@ -32,7 +32,7 @@ public class SaltPreservationRecipe extends CustomRecipe {
             if (item.is(FSTags.SALTS)) {
                 if (hasSalt) return false;
                 hasSalt = true;
-            } else if (item.isEdible() && !item.is(FSTags.UNSPOILABLE_FOODS)) {
+            } else if (item.isEdible() && !item.is(FSTags.UNSPOILABLE_FOODS) && item.is(FSTags.SALTABLE_FOODS)) {
                 if (!foodItem.isEmpty()) return false;
                 foodItem = item;
             } else {

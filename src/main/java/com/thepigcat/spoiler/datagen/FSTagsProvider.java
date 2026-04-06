@@ -134,6 +134,17 @@ public class FSTagsProvider {
             tag(FSTags.FAT);
             tag(FSTags.PICKLED_PRODUCE);
             tag(FSTags.SALTS);
+
+            tag(FSTags.SALTABLE_FOODS)
+                    .addTag(FSTags.RAW_MEATS)
+                    .addTag(FSTags.COOKED_MEATS)
+                    .addTag(FSTags.COOKED_MEALS)
+                    .addTag(FSTags.BAKED_GOODS)
+                    .addTag(FSTags.COOKED_EGGS)
+                    .addTag(FSTags.HARD_PRODUCE)
+                    .addTag(FSTags.SOFT_PRODUCE)
+                    .addTag(FSTags.DRY_PRODUCE)
+                    .addTag(FSTags.PRODUCE);
         }
     }
 }

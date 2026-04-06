@@ -30,6 +30,7 @@ public final class FSTags {
     public static final TagKey<Item> DRY_PRODUCE = bindItemTag("dry_produce");
     public static final TagKey<Item> PICKLED_PRODUCE = bindItemTag("pickled_produce");
     public static final TagKey<Item> SALTS = bindItemTag("salts");
+    public static final TagKey<Item> SALTABLE_FOODS = bindItemTag("saltable_foods");
     public static final TagKey<EntityType<?>> ENTITIES_WITH_INVENTORY = bindEntityTypeTag("entities_with_inventory");
 
     private static @NotNull TagKey<Item> bindItemTag(String path) {
